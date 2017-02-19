@@ -36,7 +36,7 @@ func main()  {
         var box Box
         if box, err = mb.discovery(f); err != nil {
             ol.E(nil, fmt.Sprintf("discovery box failed, err is %v", err))
-            return 
+            return
         }
         ol.T(nil, fmt.Sprintf("main discovery box:%+v", box))
 

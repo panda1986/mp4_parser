@@ -105,8 +105,8 @@ func (v *Mp4Box) NbHeader() int {
     return size
 }
 
-func (v *Mp4Box) decodeHeader(r io.Reader) (err error) {
-    v.UsedSize = 0
+func (v *Mp4Box) DecodeHeader(r io.Reader) (err error) {
+    /*v.UsedSize = 0
 
     // Discovery the size and type.
     if err = v.Read(r, &v.SmallSize); err != nil {
@@ -142,7 +142,7 @@ func (v *Mp4Box) decodeHeader(r io.Reader) (err error) {
             return
         }
         v.UsedSize += uint64DataSize(v.UserType)
-    }
+    }*/
     return
 }
 
@@ -157,21 +157,18 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
         ol.E(nil, fmt.Sprintf("read small size failed, err is %v", err))
         return
     }
-    v.UsedSize += uint64DataSize(smallSize)
 
     var bt uint32
     if err = v.Read(r, &bt); err != nil {
         ol.E(nil, fmt.Sprintf("read type failed, err is %v", err))
         return
     }
-    v.UsedSize += uint64DataSize(bt)
 
     if smallSize == SRS_MP4_USE_LARGE_SIZE {
         if err = v.Read(r, &largeSize); err != nil {
             ol.E(nil, fmt.Sprintf("read large size failed, err is %v", err))
             return
         }
-        v.UsedSize += uint64DataSize(largeSize)
     }
 
     // Only support 31bits size.
@@ -189,6 +186,8 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
         box = NewMp4MovieBox()
     case SrsMp4BoxTypeMVHD:
         box = NewMp4MovieHeaderBox()
+    case SrsMp4BoxTypeTRAK:
+        box = NewMp4TrackBox()
     case SrsMp4BoxTypeTKHD:
         box = NewMp4TrackHeaderBox()
     default:
@@ -376,10 +375,6 @@ func (v *Mp4MovieBox) NbHeader() int {
     return v.Mp4Box.NbHeader()
 }
 
-func (v *Mp4MovieBox) DecodeHeader(r io.Reader) (err error) {
-    return
-}
-
 /**
  * 4.2 Object Structure
  * ISO_IEC_14496-12-base-format-2012.pdf, page 17
@@ -550,12 +545,27 @@ type Mp4TrackBox struct {
     TrackType uint8
 }
 
+func NewMp4TrackBox() *Mp4TrackBox {
+    v := &Mp4TrackBox{}
+    return v
+}
+
+func (v *Mp4TrackBox) Basic() *Mp4Box {
+    return &v.Mp4Box
+}
+
+func (v *Mp4TrackBox) NdHeader() int {
+    return v.Mp4Box.NbHeader()
+}
+
 /**
  * 8.3.2 Track Header Box (tkhd)
  * ISO_IEC_14496-12-base-format-2012.pdf, page 32
  */
 type Mp4TrackHeaderBox struct {
     Mp4FullBox
+    // an integer that declares the creation time of the presentation (in seconds since
+    // midnight, Jan. 1, 1904, in UTC time)
     CreateTime uint64
     ModTime uint64
     TrackId uint32
@@ -579,8 +589,12 @@ func NewMp4TrackHeaderBox() *Mp4TrackHeaderBox {
     return v
 }
 
+func (v *Mp4TrackHeaderBox) Basic() *Mp4Box {
+    return &v.Mp4FullBox.Mp4Box
+}
+
 func (v *Mp4TrackHeaderBox) NbHeader() int {
-    return 0
+    return v.Mp4FullBox.NbHeader()
 }
 
 func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
@@ -663,6 +677,7 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
         }
     }
 
+    //TODO: width and height is 16.16 format, need to be convert
     if err = v.Read(r, &v.Width); err != nil {
         ol.E(nil, fmt.Sprintf("read tkhd width failed, err is %v", err))
         return
@@ -672,5 +687,11 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
         ol.E(nil, fmt.Sprintf("read tkhd height failed, err is %v", err))
         return
     }
+
+    ol.T(nil, fmt.Sprintf("tkhd:%+v", v))
     return
+}
+
+type Mp4MediaBox struct {
+    Mp4Box
 }
