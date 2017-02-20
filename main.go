@@ -5,15 +5,14 @@ import (
     "flag"
     "os"
     ol "github.com/ossrs/go-oryx-lib/logger"
+    "io"
 )
 
 const (
-    version = "0.0.1"
+    version = "0.0.2"
 
     SRS_MP4_EOF_SIZE = 0
     SRS_MP4_USE_LARGE_SIZE = 1
-
-    SRS_MP4_BUF_SIZE = 4096
 )
 
 func main()  {
@@ -36,19 +35,23 @@ func main()  {
         var box Box
         if box, err = mb.discovery(f); err != nil {
             ol.E(nil, fmt.Sprintf("discovery box failed, err is %v", err))
-            return
+            break
         }
         ol.T(nil, fmt.Sprintf("main discovery box:%+v", box))
 
         if err = box.DecodeHeader(f); err != nil {
             ol.E(nil, fmt.Sprintf("mp4 decode contained box header failed, err is %v", err))
-            return
+            break
         }
         ol.T(nil, fmt.Sprintf("main after decode header, box:%+v", box))
 
         if err = box.Basic().DecodeBoxes(f); err != nil {
             ol.E(nil, fmt.Sprintf("mp4 decode contained box boxes failed, err is %v", err))
-            return
+            break
         }
+    }
+
+    if err == io.EOF {
+        ol.T(nil, fmt.Sprintf("decode mp4 file:%v success", mp4Url))
     }
 }

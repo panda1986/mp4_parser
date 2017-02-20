@@ -66,7 +66,7 @@ func (v *Mp4Box) sz() uint64 {
 }
 
 func (v *Mp4Box) left() uint64 {
-    ol.T(nil, "left:", v.sz(), v.UsedSize)
+    ol.I(nil, "left:", v.sz(), v.UsedSize)
     return v.sz() - v.UsedSize
 }
 
@@ -106,43 +106,6 @@ func (v *Mp4Box) NbHeader() int {
 }
 
 func (v *Mp4Box) DecodeHeader(r io.Reader) (err error) {
-    /*v.UsedSize = 0
-
-    // Discovery the size and type.
-    if err = v.Read(r, &v.SmallSize); err != nil {
-        ol.E(nil, fmt.Sprintf("read small size failed, err is %v", err))
-        return
-    }
-    v.UsedSize += uint64DataSize(v.SmallSize)
-
-    if err = v.Read(r, &v.BoxType); err != nil {
-        ol.E(nil, fmt.Sprintf("read type failed, err is %v", err))
-        return
-    }
-    v.UsedSize += uint64DataSize(v.BoxType)
-
-    if v.SmallSize == SRS_MP4_USE_LARGE_SIZE {
-        if err = v.Read(r, &v.LargeSize); err != nil {
-            ol.E(nil, fmt.Sprintf("read large size failed, err is %v", err))
-            return
-        }
-        v.UsedSize += uint64DataSize(v.LargeSize)
-    }
-
-    // Only support 31bits size.
-    if (v.LargeSize > 0x7fffffff) {
-        err = fmt.Errorf("box overflow")
-        ol.E(nil, err.Error())
-        return
-    }
-
-    if v.BoxType == SrsMp4BoxTypeUUID {
-        if err = v.Read(r, &v.UserType); err != nil {
-            ol.E(nil, fmt.Sprintf("read user type failed, err is %v", err))
-            return
-        }
-        v.UsedSize += uint64DataSize(v.UserType)
-    }*/
     return
 }
 
@@ -178,7 +141,7 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
         return
     }
 
-    ol.T(nil, fmt.Sprintf("discovery small size=%v, large size=%v, bt=%x", smallSize, largeSize, bt))
+    ol.T(nil, fmt.Sprintf("discovery a new box small size=%v, large size=%v, bt=%x", smallSize, largeSize, bt))
     switch bt {
     case SrsMp4BoxTypeFTYP:
         box = NewMp4FileTypeBox()
@@ -236,7 +199,7 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
 func (v *Mp4Box) DecodeBoxes(r io.Reader) (err error) {
     // read left space
     left := v.left()
-    ol.T(nil, fmt.Sprintf("after decode header, left space:%v", left))
+    ol.I(nil, fmt.Sprintf("after decode header, left space:%v", left))
     for {
         if left <= 0 {
             break
@@ -247,7 +210,6 @@ func (v *Mp4Box) DecodeBoxes(r io.Reader) (err error) {
             ol.E(nil, fmt.Sprintf("mp4 discovery contained box failed, err is %v", err))
             return
         }
-        ol.T(nil, fmt.Sprintf("discvery a new box:%+v", box))
 
         if err = box.DecodeHeader(r); err != nil {
             ol.E(nil, fmt.Sprintf("mp4 decode contained box header failed, err is %v", err))
@@ -268,7 +230,7 @@ func (v *Mp4Box) Skip(r io.Reader, num uint64) {
     data := make([]uint8, num)
     v.Read(r, data)
     v.UsedSize += num
-    ol.T(nil, fmt.Sprintf("skip %v bytes", num))
+    ol.I(nil, fmt.Sprintf("skip %v bytes", num))
 }
 
 func (v *Mp4Box) Read(r io.Reader, data interface{}) (err error) {
@@ -715,7 +677,7 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
         return
     }
 
-    ol.T(nil, fmt.Sprintf("tkhd:%+v", v))
+    ol.T(nil, fmt.Sprintf("decode tkhd:%+v", v))
     return
 }
 
