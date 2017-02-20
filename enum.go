@@ -282,3 +282,14 @@ const (
     SrsAvcLevel_51 = 51
 )
 
+/**
+ * 8.4.3.3 Semantics
+ * ISO_IEC_14496-12-base-format-2012.pdf, page 37
+ */
+const (
+    SrsMp4HandlerTypeForbidden = 0x00
+
+    SrsMp4HandlerTypeVIDE = 0x76696465 // 'vide'
+    SrsMp4HandlerTypeSOUN = 0x736f756e // 'soun'
+)
+
