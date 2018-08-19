@@ -56,13 +56,84 @@ output: json format to stdout and web api
     --- mvhd
     --- trak
     --- trak
-    --- trak
-    --- trak
 --- free
 --- free    
 --- mdat
 
 ```    
-                           
+         
+#### ftyp
+
+* 一般放置在文件的开始位置，
+```
+    majorBrand uint32
+    minorVersion uint32
+    compatibleBrands []uint32
+```                              
+
+#### moov
+
+* 该box包含了文件媒体的metadata信息，该box有且只有1个，只被包含在文件层
+* 子boxes
+
+    * mvhd
+        ```
+        create_time
+        time_scale(时间单位)
+        duration
+        volume
+        rate
+        ```
+        
+    * trak （有1个或多个,视频或者音频）
+        * tkhd
+        ```
+        track_ID: 不会重复，而且不能是0
+        duration: track的时长
+        volume: track的音频volume
+        width， height: track的分辨率
+        ```
+        
+        * mdia
+            * mdhd
+            * hdlr
+            
+            ```
+            handler_type: 指示trak的类型，vide, soun, hint 
+
+            ```
+            * minf
+                * stbl sample table box(包含track的所有samples的time和data索引信息)
+                    * stsd sample description, 音视频编码信息
+                    * stts 说明该track总的有多少帧，总的时长
+                    * stss 该box确定media中的关键帧帧号，主要用于视频拖动
+                    * stsc 存储了chunk与sample的映射关系，一个chunk含有多少个sample
+                    * stsz 该box确定了每一帧的大小
+                    * stco 定义了每个chunk在媒体文件中的偏移位置
+* 为什么把moov放在文件头部可以有fast start的效果？(stss)
+
+```
+You can see the browser makes 3 requests before it can start playing the video. 
+In the first request, the browser downloads the first 552 KB of the video using an [HTTP range request](https://en.wikipedia.org/wiki/Byte_serving). 
+We can tell this by the 206 Partial Content HTTP response code, and by digging in and looking at the request headers. However the moov
+ atom is not there so the browser cannot start to play the video. 
+ Next, the browser requests the final 21 KB of the video file using another range request. This does contain the moov
+ atom, telling the browser where the video and audio streams start. 
+ Finally, the browser makes a third and final request to get the audio/video data and can start to play the video. 
+ This has wasted over half a megabyte of bandwidth and delayed the start of the video by 210 ms! Simply because the browser couldn’t find the moov
+ atom.
+```
+* stco中第一个chunck的offset，就是mdat data的起始位置
+
+#### mdat
+
+* 该box包含媒体数据(可能有多个)
 
 ### 如何解析一个box
+
+* 4字节的size 
+    * 如果size == 1, 读取8字节的large size
+    * 如果size == 0, 表明是文件的最后一个box,通常用于mdat box
+* 4字节的type 
+    * //根据type判断box类型
+    * 如果类型不明可以跳过此box
