@@ -1,11 +1,11 @@
-package main
+package core
 
 import (
     "fmt"
     "io"
-    ol "github.com/ossrs/go-oryx-lib/logger"
     "encoding/binary"
     "reflect"
+    log "github.com/sirupsen/logrus"
 )
 
 type Box interface {
@@ -56,7 +56,7 @@ func (v *Mp4Box) sz() uint64 {
 }
 
 func (v *Mp4Box) left() uint64 {
-    ol.I(nil, "left:", v.sz(), v.UsedSize)
+    log.Infof("box left:size=%v, used=%v", v.sz(), v.UsedSize)
     return v.sz() - v.UsedSize
 }
 
@@ -99,7 +99,7 @@ func (v *Mp4Box) DecodeHeader(r io.Reader) (err error) {
     return
 }
 
-func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
+func (v *Mp4Box) Discovery(r io.Reader) (box Box, err error) {
     v.UsedSize = 0
 
     // Discovery the size and type.
@@ -107,27 +107,26 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
     var smallSize uint32
 
     if err = v.Read(r, &smallSize); err != nil {
-        ol.E(nil, fmt.Sprintf("read small size failed, err is %v", err))
+        log.Errorf("read small size failed, err is %v", err)
         return
     }
 
     var bt uint32
     if err = v.Read(r, &bt); err != nil {
-        ol.E(nil, fmt.Sprintf("read type failed, err is %v", err))
+        log.Errorf("read type failed, err is %v", err)
         return
     }
 
     if smallSize == SRS_MP4_USE_LARGE_SIZE {
         if err = v.Read(r, &largeSize); err != nil {
-            ol.E(nil, fmt.Sprintf("read large size failed, err is %v", err))
+            log.Errorf("read large size failed, err is %v", err)
             return
         }
     }
 
     // Only support 31bits size.
     if (largeSize > 0x7fffffff) {
-        err = fmt.Errorf("box overflow")
-        ol.E(nil, err.Error())
+        log.Errorf("large size too big, box overflow")
         return
     }
 
@@ -193,35 +192,35 @@ func (v *Mp4Box) discovery(r io.Reader) (box Box, err error) {
     box.Basic().LargeSize = largeSize
     box.Basic().UsedSize = v.UsedSize
 
-    ol.I(nil, fmt.Sprintf("discovery a new box:%v small size=%v, large size=%v, bt=%x", reflect.TypeOf(box), smallSize, largeSize, bt))
+    log.Infof("Discovery a new box:%v small size=%v, large size=%v, bt=%x", reflect.TypeOf(box), smallSize, largeSize, bt)
     return
 }
 
 func (v *Mp4Box) DecodeBoxes(r io.Reader) (err error) {
     // read left space
     left := v.left()
-    ol.T(nil, fmt.Sprintf("after decode header, left space:%v", left))
+    log.Infof("after decode header, left space:%v", left)
     for {
         if left <= 0 {
             break
         }
 
         var box Box
-        if box, err = v.discovery(r); err != nil {
-            ol.E(nil, fmt.Sprintf("mp4 discovery contained box failed, err is %v", err))
+        if box, err = v.Discovery(r); err != nil {
+            log.Errorf("mp4 Discovery contained box failed, err is %v", err)
             return
         }
 
         if err = box.DecodeHeader(r); err != nil {
-            ol.E(nil, fmt.Sprintf("mp4 decode contained box header failed, err is %v", err))
+            log.Errorf("mp4 decode contained box header failed, err is %v", err)
             return
         }
         if err = box.Basic().DecodeBoxes(r); err != nil {
-            ol.E(nil, fmt.Sprintf("mp4 decode contained box boxes failed, err is %v", err))
+            log.Errorf("mp4 decode contained box boxes failed, err is %v", err)
             return
         }
 
-        ol.T(nil, fmt.Sprintf("box:%v decode boxes success, sub boxes=%v, box.sz=%v, left=%v %v.", reflect.TypeOf(box), len(box.Basic().Boxes), box.Basic().sz(), left, left - box.Basic().sz()))
+        log.Tracef("box:%v decode boxes success, sub boxes=%v, box.sz=%v, left=%v %v.", reflect.TypeOf(box), len(box.Basic().Boxes), box.Basic().sz(), left, left - box.Basic().sz())
 
         v.Boxes = append(v.Boxes, box)
 
@@ -238,7 +237,7 @@ func (v *Mp4Box) Skip(r io.Reader, num uint64) {
     data := make([]uint8, num)
     v.Read(r, data)
     //v.UsedSize += num
-    ol.I(nil, fmt.Sprintf("skip %v bytes", num))
+    log.Infof("skip %v bytes", num)
 }
 
 func (v *Mp4Box) Read(r io.Reader, data interface{}) (err error) {
@@ -300,14 +299,14 @@ func (v *Mp4FileTypeBox) DecodeHeader(r io.Reader) (err error) {
         return err
     }*/
 
-    ol.I(nil, fmt.Sprintf("decode ftyp box, usedSize=%v", v.UsedSize))
+    log.Infof("decode ftyp box, usedSize=%v", v.UsedSize)
     if err = v.Read(r, &v.majorBrand); err != nil {
-        ol.E(nil, fmt.Sprintf("read major brand failed, err is %v", err))
+        log.Errorf("read major brand failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.minorVersion); err != nil {
-        ol.E(nil, fmt.Sprintf("read minor version failed, err is %v", err))
+        log.Errorf("read minor version failed, err is %v", err)
         return
     }
 
@@ -317,7 +316,7 @@ func (v *Mp4FileTypeBox) DecodeHeader(r io.Reader) (err error) {
         for i := 0; i < int(left) / 4; i ++ {
             var brand uint32
             if err = v.Read(r, &brand); err != nil {
-                ol.E(nil, fmt.Sprintf("read brand failed, err is %v", err))
+                log.Errorf("read brand failed, err is %v", err)
                 return
             }
             v.compatibleBrands = append(v.compatibleBrands, brand)
@@ -437,7 +436,7 @@ func (v *Mp4FullBox) DecodeHeader(r io.Reader) (err error) {
     }*/
 
     if err = v.Read(r, &v.Flags); err != nil {
-        ol.E(nil, fmt.Sprintf("read moov flags failed, err is %v", err))
+        log.Errorf("read full box header failed, err is %v", err)
         return
     }
 
@@ -515,57 +514,57 @@ func (v *Mp4MovieHeaderBox) DecodeHeader(r io.Reader) (err error) {
 
     if v.Version == 1 {
         if err = v.Read(r, &v.CreateTime); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd create time failed, err is %v", err))
+            log.Errorf("read mvhd create time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.ModTime); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd mod time failed, err is %v", err))
+            log.Errorf("read mvhd mod time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.TimeScale); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd time scale failed, err is %v", err))
+            log.Errorf("read mvhd time scale failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.DurationInTbn); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd duration failed, err is %v", err))
+            log.Errorf("read mvhd duration failed, err is %v", err)
             return
         }
     } else {
         var tmp uint32
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd create time failed, err is %v", err))
+            log.Errorf("read mvhd create time failed, err is %v", err)
             return
         }
         v.CreateTime = uint64(tmp)
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd mod time failed, err is %v", err))
+            log.Errorf("read mvhd mod time failed, err is %v", err)
             return
         }
         v.ModTime = uint64(tmp)
 
         if err = v.Read(r, &v.TimeScale); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd time scale failed, err is %v", err))
+            log.Errorf("read mvhd time scale failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("read mvhd duration failed, err is %v", err))
+            log.Errorf("read mvhd duration failed, err is %v", err)
             return
         }
         v.DurationInTbn = uint64(tmp)
     }
 
     if err = v.Read(r, &v.Rate); err != nil {
-        ol.E(nil, fmt.Sprintf("read mvhd rate failed, err is %v", err))
+        log.Errorf("read mvhd rate failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.Volume); err != nil {
-        ol.E(nil, fmt.Sprintf("read mvhd volume failed, err is %v", err))
+        log.Errorf("read mvhd volume failed, err is %v", err)
         return
     }
 
@@ -798,49 +797,49 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
 
     if v.Version == 1 {
         if err = v.Read(r, &v.CreateTime); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read create time failed, err is %v", err))
+            log.Errorf("tkhd read create time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.ModTime); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read mod time failed, err is %v", err))
+            log.Errorf("tkhd read mod time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.TrackId); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read track id failed, err is %v", err))
+            log.Errorf("tkhd read track id failed, err is %v", err)
             return
         }
 
         v.Skip(r, uint64(4))
 
         if err = v.Read(r, &v.Duration); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read duration failed, err is %v", err))
+            log.Errorf("tkhd read duration failed, err is %v", err)
             return
         }
     } else {
         var tmp uint32
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read create time failed, err is %v", err))
+            log.Errorf("tkhd read create time failed, err is %v", err)
             return
         }
         v.CreateTime = uint64(tmp)
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd mod time failed, err is %v", err))
+            log.Errorf("tkhd mod time failed, err is %v", err)
             return
         }
         v.ModTime = uint64(tmp)
 
         if err = v.Read(r, &v.TrackId); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read track id failed, err is %v", err))
+            log.Errorf("tkhd read track id failed, err is %v", err)
             return
         }
 
         v.Skip(r, uint64(4))
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read duration failed, err is %v", err))
+            log.Errorf("tkhd read duration failed, err is %v", err)
             return
         }
         v.Duration = uint64(tmp)
@@ -848,17 +847,17 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
 
     v.Skip(r, uint64(8))
     if err = v.Read(r, &v.Layer); err != nil {
-        ol.E(nil, fmt.Sprintf("read tkhd layer failed, err is %v", err))
+        log.Errorf("read tkhd layer failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.AlternateGroup); err != nil {
-        ol.E(nil, fmt.Sprintf("read tkhd alternate froup failed, err is %v", err))
+        log.Errorf("read tkhd alternate froup failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.Volume); err != nil {
-        ol.E(nil, fmt.Sprintf("read tkhd volume failed, err is %v", err))
+        log.Errorf("read tkhd volume failed, err is %v", err)
         return
     }
 
@@ -866,23 +865,23 @@ func (v *Mp4TrackHeaderBox) DecodeHeader(r io.Reader) (err error) {
 
     for i := 0; i < len(v.Matrix); i ++ {
         if err = v.Read(r, &v.Matrix[i]); err != nil {
-            ol.E(nil, fmt.Sprintf("read tkhd matrix %d failed, err is %v", i, err))
+            log.Errorf("read tkhd matrix %d failed, err is %v", i, err)
             return
         }
     }
 
     //TODO: width and height is 16.16 format, need to be convert
     if err = v.Read(r, &v.Width); err != nil {
-        ol.E(nil, fmt.Sprintf("read tkhd width failed, err is %v", err))
+        log.Errorf("read tkhd width failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.Height); err != nil {
-        ol.E(nil, fmt.Sprintf("read tkhd height failed, err is %v", err))
+        log.Errorf("read tkhd height failed, err is %v", err)
         return
     }
 
-    ol.T(nil, fmt.Sprintf("decode tkhd:%+v", v))
+    log.Tracef("decode tkhd:%+v", v)
     return
 }
 
@@ -971,57 +970,57 @@ func (v *Mp4MediaHeaderBox) DecodeHeader(r io.Reader) (err error) {
 
     if v.Version == 1 {
         if err = v.Read(r, &v.CreateTime); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read create time failed, err is %v", err))
+            log.Errorf("mdhd read create time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.ModTime); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read mod time failed, err is %v", err))
+            log.Errorf("mdhd read mod time failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.TimeScale); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read timescale failed, err is %v", err))
+            log.Errorf("mdhd read timescale failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &v.Duration); err != nil {
-            ol.E(nil, fmt.Sprintf("tkhd read duration failed, err is %v", err))
+            log.Errorf("tkhd read duration failed, err is %v", err)
             return
         }
     } else {
         var tmp uint32
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read create time failed, err is %v", err))
+            log.Errorf("mdhd read create time failed, err is %v", err)
             return
         }
         v.CreateTime = uint64(tmp)
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd mod time failed, err is %v", err))
+            log.Errorf("mdhd mod time failed, err is %v", err)
             return
         }
         v.ModTime = uint64(tmp)
 
         if err = v.Read(r, &v.TimeScale); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read time scale failed, err is %v", err))
+            log.Errorf("mdhd read time scale failed, err is %v", err)
             return
         }
 
         if err = v.Read(r, &tmp); err != nil {
-            ol.E(nil, fmt.Sprintf("mdhd read duration failed, err is %v", err))
+            log.Errorf("mdhd read duration failed, err is %v", err)
             return
         }
         v.Duration = uint64(tmp)
     }
 
     if err = v.Read(r, &v.Language); err != nil {
-        ol.E(nil, fmt.Sprintf("mdhd read language failed, err is %v", err))
+        log.Errorf("mdhd read language failed, err is %v", err)
         return
     }
     v.Skip(r, uint64(2))
 
-    ol.T(nil, fmt.Sprintf("decode mdhd box success, box:%+v", v))
+    log.Tracef("decode mdhd box success, box:%+v", v)
     return
 }
 
@@ -1067,7 +1066,7 @@ func (v *Mp4HandlerReferenceBox) DecodeHeader(r io.Reader) (err error) {
     v.Skip(r, uint64(4))
 
     if err = v.Read(r, &v.HandlerType); err != nil {
-        ol.E(nil, fmt.Sprintf("read hdlr handler type failed, err is %v", err))
+        log.Errorf("read hdlr handler type failed, err is %v", err)
         return
     }
 
@@ -1075,12 +1074,12 @@ func (v *Mp4HandlerReferenceBox) DecodeHeader(r io.Reader) (err error) {
 
     data := make([]uint8, v.left())
     if err = v.Read(r, data); err != nil {
-        ol.E(nil, fmt.Sprintf("read hdlr name failed, err is %v", err))
+        log.Errorf("read hdlr name failed, err is %v", err)
         return
     }
     v.Name = string(data)
 
-    ol.T(nil, fmt.Sprintf("decode hdlr box success, box:%+v", v))
+    log.Tracef("decode hdlr box success, box:%+v", v)
     return
 }
 
@@ -1140,7 +1139,7 @@ func (v *Mp4VideoMediaHeaderBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.GraphicsMode); err != nil {
-        ol.E(nil, fmt.Sprintf("read vmhd graphics mode failed, err is %v", err))
+        log.Errorf("read vmhd graphics mode failed, err is %v", err)
         return
     }
 
@@ -1148,7 +1147,7 @@ func (v *Mp4VideoMediaHeaderBox) DecodeHeader(r io.Reader) (err error) {
     err = v.Read(r, &v.Opcolor[1])
     err = v.Read(r, &v.Opcolor[2])
 
-    ol.T(nil, fmt.Sprintf("decode vmhd box success, box:%+v", v))
+    log.Tracef("decode vmhd box success, box:%+v", v)
     return
 }
 
@@ -1260,10 +1259,10 @@ func (v *Mp4SampleEntry) Basic() *Mp4Box {
 func (v *Mp4SampleEntry) DecodeHeader(r io.Reader) (err error) {
     v.Skip(r, uint64(6))
     if err = v.Read(r, &v.DataReferenceIndex); err != nil {
-        ol.E(nil, fmt.Sprintf("read sample entry data ref index failed, err is %v", err))
+        log.Errorf("read sample entry data ref index failed, err is %v", err)
         return
     }
-    ol.T(nil, fmt.Sprintf("decode sample entry success, entry:%+v", v))
+    log.Tracef("decode sample entry success, entry:%+v", v)
     return
 }
 
@@ -1310,46 +1309,46 @@ func (v *Mp4VisualSampleEntry) DecodeHeader(r io.Reader) (err error) {
     v.Skip(r, uint64(12))
 
     if err = v.Read(r, &v.Width); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 width failed, err is %v", err))
+        log.Errorf("read avc1 width failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.Height); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 height failed, err is %v", err))
+        log.Errorf("read avc1 height failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.HorizResolution); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 horizon resolution failed, err is %v", err))
+        log.Errorf("read avc1 horizon resolution failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.VertResolution); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 vertical resolution failed, err is %v", err))
+        log.Errorf("read avc1 vertical resolution failed, err is %v", err)
         return
     }
 
     v.Skip(r, uint64(4))
 
     if err = v.Read(r, &v.FrameCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 frame count failed, err is %v", err))
+        log.Errorf("read avc1 frame count failed, err is %v", err)
         return
     }
-    ol.T(nil, fmt.Sprintf("after read frame count, usedSize=%v", v.UsedSize))
+    log.Tracef("after read frame count, usedSize=%v", v.UsedSize)
 
     if err = v.Read(r, v.CompressorName); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 compressor name failed, err is %v", err))
+        log.Errorf("read avc1 compressor name failed, err is %v", err)
         return
     }
-    ol.T(nil, fmt.Sprintf("after read CompressorName, usedSize=%v", v.UsedSize))
+    log.Tracef("after read CompressorName, usedSize=%v", v.UsedSize)
 
     if err = v.Read(r, &v.Depth); err != nil {
-        ol.E(nil, fmt.Sprintf("read avc1 depth failed, err is %v", err))
+        log.Errorf("read avc1 depth failed, err is %v", err)
         return
     }
 
     v.Skip(r, uint64(2))
-    ol.T(nil, fmt.Sprintf("decode avc1 succes, data:%+v, left:%v", v, v.left()))
+    log.Tracef("decode avc1 succes, data:%+v, left:%v", v, v.left())
     return
 }
 
@@ -1379,10 +1378,10 @@ func (v *Mp4AvccBox) DecodeHeader(r io.Reader) (err error) {
     v.nbConfig = int(v.left())
     v.avcConfig = make([]uint8, v.nbConfig)
     if err = v.Read(r, v.avcConfig); err != nil {
-        ol.E(nil, fmt.Sprintf("read avcc config failed, err is %v", err))
+        log.Errorf("read avcc config failed, err is %v", err)
         return
     }
-    ol.T(nil, fmt.Sprintf("read avcc box success, nv config=%v", v.nbConfig))
+    log.Tracef("read avcc box success, nv config=%v", v.nbConfig)
     return
 }
 
@@ -1408,12 +1407,12 @@ func (v *Mp4AudioSampleEntry) DecodeHeader(r io.Reader) (err error) {
     v.Skip(r, uint64(8))
 
     if err = v.Read(r, &v.channelCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read mp4a channel count failed, err is %v", err))
+        log.Errorf("read mp4a channel count failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.sampleSize); err != nil {
-        ol.E(nil, fmt.Sprintf("read mp4a sample size failed, err is %v", err))
+        log.Errorf("read mp4a sample size failed, err is %v", err)
         return
     }
 
@@ -1421,11 +1420,11 @@ func (v *Mp4AudioSampleEntry) DecodeHeader(r io.Reader) (err error) {
     v.Skip(r, uint64(2))
 
     if err = v.Read(r, &v.sampleRate); err != nil {
-        ol.E(nil, fmt.Sprintf("read mp4a sample rate failed, err is %v", err))
+        log.Errorf("read mp4a sample rate failed, err is %v", err)
         return
     }
 
-    ol.T(nil, fmt.Sprintf("decode mp4a succes, data:%+v %v", v, v.left()))
+    log.Tracef("decode mp4a succes, data:%+v %v", v, v.left())
     return
 }
 
@@ -1450,11 +1449,11 @@ func (v *Mp4AudioSampleEntry) asc() (*Mp4DecoderSpecificInfo, error) {
  * ISO_IEC_14496-1-System-2010.pdf, page 32
  */
 type Mp4BaseDescriptor struct {
-               // The values of the class tags are
-               // defined in Table 2. As an expandable class the size of each class instance in bytes is encoded and accessible
-               // through the instance variable sizeOfInstance (see 8.3.3).
+    // The values of the class tags are
+    // defined in Table 2. As an expandable class the size of each class instance in bytes is encoded and accessible
+    // through the instance variable sizeOfInstance (see 8.3.3).
     tag uint8 // bit(8)
-               // The decoded or encoded variant length.
+    // The decoded or encoded variant length.
     vlen int32 // bit(28)
 
     total int32
@@ -1464,7 +1463,7 @@ type Mp4BaseDescriptor struct {
 
 func (v *Mp4BaseDescriptor) decodeHeader(r io.Reader) (err error) {
     if err = binary.Read(r, binary.BigEndian, &v.tag); err != nil {
-        ol.E(nil, fmt.Sprintf("read desc tag failed, err is %v", err))
+        log.Errorf("read desc tag failed, err is %v", err)
         return
     }
     v.total += 1
@@ -1473,7 +1472,7 @@ func (v *Mp4BaseDescriptor) decodeHeader(r io.Reader) (err error) {
     var length int32
     for {
         if err = binary.Read(r, binary.BigEndian, &vsize); err != nil {
-            ol.E(nil, fmt.Sprintf("read desc 1byte size failed, err is %v", err))
+            log.Errorf("read desc 1byte size failed, err is %v", err)
             return
         }
         length = (length << 7) | int32(vsize & 0x7f)
@@ -1527,11 +1526,11 @@ func (v *Mp4DecoderSpecificInfo) decode(r io.Reader) (err error) {
 
     v.asc = make([]uint8, v.vlen)
     if err = v.Read(r, v.asc); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderSpecificInfo asc failed, err is %v", err))
+        log.Errorf("read DecoderSpecificInfo asc failed, err is %v", err)
         return
     }
 
-    ol.T(nil, fmt.Sprintf("decode specificInfo:asc:%+v", v.asc))
+    log.Tracef("decode specificInfo:asc:%+v", v.asc)
     return
 }
 
@@ -1542,8 +1541,8 @@ func (v *Mp4DecoderSpecificInfo) decode(r io.Reader) (err error) {
 type Mp4DecoderConfigDescriptor struct {
     Mp4BaseDescriptor
 
-                                             // an indication of the object or scene description type that needs to be supported
-                                             // by the decoder for this elementary stream as per Table 5.
+    // an indication of the object or scene description type that needs to be supported
+    // by the decoder for this elementary stream as per Table 5.
     objectTypeIndication uint8 // bit(8)
     streamType uint8 // bit(6)
     upStream uint8 // bit(1)
@@ -1567,13 +1566,13 @@ func (v *Mp4DecoderConfigDescriptor) decode(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.objectTypeIndication); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderConfigDescriptor objectTypeIndication failed, err is %v", err))
+        log.Errorf("read DecoderConfigDescriptor objectTypeIndication failed, err is %v", err)
         return
     }
 
     var data uint8
     if err = v.Read(r, &data); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderConfigDescriptor data failed, err is %v", err))
+        log.Errorf("read DecoderConfigDescriptor data failed, err is %v", err)
         return
     }
     v.upStream = (data >> 1) & 0x01
@@ -1582,30 +1581,30 @@ func (v *Mp4DecoderConfigDescriptor) decode(r io.Reader) (err error) {
 
     tmp := make([]byte, 3)
     if _, err = io.ReadFull(r, tmp); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderConfigDescriptor bufferSizeDB failed, err is %v", err))
+        log.Errorf("read DecoderConfigDescriptor bufferSizeDB failed, err is %v", err)
         return
     }
     v.bufferSizeDB = Bytes3ToUint32(tmp)
 
     if err = v.Read(r, &v.maxBitrate); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderConfigDescriptor maxBitrate failed, err is %v", err))
+        log.Errorf("read DecoderConfigDescriptor maxBitrate failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.avgBitrate); err != nil {
-        ol.E(nil, fmt.Sprintf("read DecoderConfigDescriptor avgBitrate failed, err is %v", err))
+        log.Errorf("read DecoderConfigDescriptor avgBitrate failed, err is %v", err)
         return
     }
 
-    ol.T(nil, fmt.Sprintf("after decode DecoderConfigDescriptor, left:%v", v.left()))
+    log.Tracef("after decode DecoderConfigDescriptor, left:%v", v.left())
     if v.left() > 0 {
         if err = v.descSpecificInfo.decode(r); err != nil {
-            ol.E(nil, fmt.Sprintf("decode descSpecificInfo failed, err is %v", err))
+            log.Errorf("decode descSpecificInfo failed, err is %v", err)
             return
         }
     }
 
-    ol.T(nil, fmt.Sprintf("decode config desc:%+v", v))
+    log.Tracef("decode config desc:%+v", v)
     return
 }
 
@@ -1624,10 +1623,10 @@ func (v *Mp4SLConfigDescriptor) decode(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.predefined); err != nil {
-        ol.E(nil, fmt.Sprintf("read SL predefined failed, err is %v", err))
+        log.Errorf("read SL predefined failed, err is %v", err)
         return
     }
-    ol.T(nil, fmt.Sprintf("decde sl:predefined:%v", v.predefined))
+    log.Tracef("decde sl:predefined:%v", v.predefined)
     return
 }
 
@@ -1643,12 +1642,12 @@ type Mp4ES_Descriptor struct {
     URL_Flag uint8 // bit(1)
     OCRstreamFlag uint8 // bit(1)
     streamPriority uint8 // bit(5)
-                               // if (streamDependenceFlag)
+    // if (streamDependenceFlag)
     dependsOn_ES_ID uint16
-                               // if (URL_Flag)
+    // if (URL_Flag)
     URLlength uint8
     URLstring []uint8
-                               // if (OCRstreamFlag)
+    // if (OCRstreamFlag)
     OCR_ES_Id uint16
 
     decConfigDescr *Mp4DecoderConfigDescriptor
@@ -1669,13 +1668,13 @@ func (v *Mp4ES_Descriptor) decode(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.ES_ID); err != nil {
-        ol.E(nil, fmt.Sprintf("read ES_Descriptor ES_ID failed, err is %v", err))
+        log.Errorf("read ES_Descriptor ES_ID failed, err is %v", err)
         return
     }
 
     var data uint8
     if err = v.Read(r, &data); err != nil {
-        ol.E(nil, fmt.Sprintf("read ES_Descriptor data failed, err is %v", err))
+        log.Errorf("read ES_Descriptor data failed, err is %v", err)
         return
     }
     v.streamPriority = data & 0x1f
@@ -1685,41 +1684,41 @@ func (v *Mp4ES_Descriptor) decode(r io.Reader) (err error) {
 
     if v.streamDependenceFlag == 0x01 {
         if err = v.Read(r, &v.dependsOn_ES_ID); err != nil {
-            ol.E(nil, fmt.Sprintf("read ES_Descriptor dependsOn_ES_ID failed, err is %v", err))
+            log.Errorf("read ES_Descriptor dependsOn_ES_ID failed, err is %v", err)
             return
         }
     }
 
     if v.URL_Flag == 0x01 {
         if err = v.Read(r, &v.URLlength); err != nil {
-            ol.E(nil, fmt.Sprintf("read ES_Descriptor URLLength failed, err is %v", err))
+            log.Errorf("read ES_Descriptor URLLength failed, err is %v", err)
             return
         }
 
         v.URLstring = make([]uint8, v.URLlength)
         if err = v.Read(r, v.URLstring); err != nil {
-            ol.E(nil, fmt.Sprintf("read ES_Descriptor URLstring failed, err is %v", err))
+            log.Errorf("read ES_Descriptor URLstring failed, err is %v", err)
             return
         }
     }
 
     if v.OCRstreamFlag == 0x01 {
         if err = v.Read(r, &v.OCR_ES_Id); err != nil {
-            ol.E(nil, fmt.Sprintf("read ES_Descriptor OCR_ES_Id failed, err is %v", err))
+            log.Errorf("read ES_Descriptor OCR_ES_Id failed, err is %v", err)
             return
         }
     }
 
     if err = v.decConfigDescr.decode(r); err != nil {
-        ol.E(nil, fmt.Sprintf("decode ES_Descriptor decConfigDescr failed, err is %v", err))
+        log.Errorf("decode ES_Descriptor decConfigDescr failed, err is %v", err)
         return
     }
     if err = v.slConfigDescr.decode(r); err != nil {
-        ol.E(nil, fmt.Sprintf("decode ES_Descriptor slConfigDescr failed, err is %v", err))
+        log.Errorf("decode ES_Descriptor slConfigDescr failed, err is %v", err)
         return
     }
 
-    ol.T(nil, fmt.Sprintf("decode ES_Descriptor:%+v", v))
+    log.Tracef("decode ES_Descriptor:%+v", v)
     return
 }
 
@@ -1751,9 +1750,9 @@ func (v *Mp4EsdsBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.es.decode(r); err != nil {
-        ol.E(nil, fmt.Sprintf("decode esds box failed, err is %v", err))
+        log.Errorf("decode esds box failed, err is %v", err)
     }
-    ol.T(nil, fmt.Sprintf("before decode esds content, used=%v es_len=%v", v.UsedSize, v.es.total))
+    log.Tracef("before decode esds content, used=%v es_len=%v", v.UsedSize, v.es.total)
 
     v.UsedSize += uint64(v.es.total)
     return
@@ -1792,14 +1791,14 @@ func (v *Mp4SampleDescritionBox) DecodeHeader(r io.Reader) (err error) {
 
     var nbEntries uint32
     if err = v.Read(r, &nbEntries); err != nil {
-        ol.E(nil, fmt.Sprintf("read stsd number entries failed, err is %v", err))
+        log.Errorf("read stsd number entries failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(nbEntries); i++ {
         mb := NewMp4Box()
         var subBox Box
-        if subBox, err = mb.discovery(r); err != nil {
+        if subBox, err = mb.Discovery(r); err != nil {
             return
         }
 
@@ -1814,10 +1813,10 @@ func (v *Mp4SampleDescritionBox) DecodeHeader(r io.Reader) (err error) {
         v.Entries = append(v.Entries, subBox)
         v.UsedSize += subBox.Basic().sz()
 
-        ol.T(nil, fmt.Sprintf("decode one entry, box:%v, basic.sz=%v, usedSize=%v, left=%v", reflect.TypeOf(subBox), subBox.Basic().sz(), v.UsedSize, v.left()))
+        log.Tracef("decode one entry, box:%v, basic.sz=%v, usedSize=%v, left=%v", reflect.TypeOf(subBox), subBox.Basic().sz(), v.UsedSize, v.left())
     }
 
-    ol.T(nil, fmt.Sprintf("decode stsd box success, box:%+v", v))
+    log.Tracef("decode stsd box success, box:%+v", v)
     return
 }
 
@@ -1879,25 +1878,25 @@ func (v *Mp4DecodingTime2SampleBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.EntryCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read stts entry count failed, err is %v", err))
+        log.Errorf("read stts entry count failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(v.EntryCount); i++ {
         entry := &Mp4SttsEntry{}
         if err = v.Read(r, &entry.SampleCount); err != nil {
-            ol.E(nil, fmt.Sprintf("read stts entry sample count failed, err is %v", err))
+            log.Errorf("read stts entry sample count failed, err is %v", err)
             return
         }
         if err = v.Read(r, &entry.SampleDelta); err != nil {
-            ol.E(nil, fmt.Sprintf("read stts entry sample delta failed, err is %v", err))
+            log.Errorf("read stts entry sample delta failed, err is %v", err)
             return
         }
-        ol.T(nil, fmt.Sprintf("decode one stts entry, entry=%+v", entry))
+        log.Tracef("decode one stts entry, entry=%+v", entry)
         v.Entries = append(v.Entries, entry)
     }
 
-    ol.T(nil, fmt.Sprintf("decode stts box success, box=%+v", v))
+    log.Tracef("decode stts box success, box=%+v", v)
     return
 }
 
@@ -1928,7 +1927,7 @@ type Mp4CttsEntry struct {
 * 1 of this box, the composition timeline and the decoding timeline are still derived from each other, but the
 * offsets are signed. It is recommended that for the computed composition timestamps, there is exactly one with
 * the value 0 (zero).
-*/
+ */
 type Mp4CompositionTime2SampleBox struct {
     Mp4FullBox
     entryCount uint32
@@ -1948,14 +1947,14 @@ func (v *Mp4CompositionTime2SampleBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.entryCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read stts entry count failed, err is %v", err))
+        log.Errorf("read stts entry count failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(v.entryCount); i++ {
         entry := &Mp4CttsEntry{}
         if err = v.Read(r, &entry.sampleCount); err != nil {
-            ol.E(nil, fmt.Sprintf("read ctts entry sample count failed, err is %v", err))
+            log.Errorf("read ctts entry sample count failed, err is %v", err)
             return
         }
         if v.Version == 0 {
@@ -1967,11 +1966,11 @@ func (v *Mp4CompositionTime2SampleBox) DecodeHeader(r io.Reader) (err error) {
             v.Read(r, &offset)
             entry.sampleOffset = int64(offset)
         }
-        ol.T(nil, fmt.Sprintf("decode one ctts entry, entry=%+v", entry))
+        log.Tracef("decode one ctts entry, entry=%+v", entry)
         v.entries = append(v.entries, entry)
     }
 
-    ol.T(nil, fmt.Sprintf("decode ctts box success, box=%+v", v))
+    log.Tracef("decode ctts box success, box=%+v", v)
     return
 
     return
@@ -2009,20 +2008,20 @@ func (v *Mp4SyncSampleBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.EntryCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read stss entry count failed, err is %v", err))
+        log.Errorf("read stss entry count failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(v.EntryCount); i++ {
         var sm uint32
         if err = v.Read(r, &sm); err != nil {
-            ol.T(nil, fmt.Sprintf("read stss entry %v sample number failed, err is %v", i, err))
+            log.Tracef("read stss entry %v sample number failed, err is %v", i, err)
             return
         }
         v.SampleNumbers = append(v.SampleNumbers, sm)
     }
 
-    ol.T(nil, fmt.Sprintf("decode stss box success, box=%+v", v))
+    log.Tracef("decode stss box success, box=%+v", v)
     return
 }
 
@@ -2068,29 +2067,29 @@ func (v *Mp4Sample2ChunkBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.EntryCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read stsc entry count failed, err is %v", err))
+        log.Errorf("read stsc entry count failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(v.EntryCount); i++ {
         entry := &Mp4StscEntry{}
         if err = v.Read(r, &entry.FirstChunk); err != nil {
-            ol.E(nil, fmt.Sprintf("read stsc %v entry first chunk failed, err is %v", i ,err))
+            log.Errorf("read stsc %v entry first chunk failed, err is %v", i ,err)
             return
         }
         if err = v.Read(r, &entry.SamplesPerChunk); err != nil {
-            ol.E(nil, fmt.Sprintf("read stsc %v entry samples per chunk failed, err is %v", i ,err))
+            log.Errorf("read stsc %v entry samples per chunk failed, err is %v", i ,err)
             return
         }
         if err = v.Read(r, &entry.sampleDescriptionIndex); err != nil {
-            ol.E(nil, fmt.Sprintf("read stsc %v entry samples description index failed, err is %v", i ,err))
+            log.Errorf("read stsc %v entry samples description index failed, err is %v", i ,err)
             return
         }
-        ol.T(nil, fmt.Sprintf("decode stsc entry ok, entry=%+v", entry))
+        log.Tracef("decode stsc entry ok, entry=%+v", entry)
         v.Entries = append(v.Entries, entry)
     }
 
-    ol.T(nil, fmt.Sprintf("decode stsc box success, box=%+v", v))
+    log.Tracef("decode stsc box success, box=%+v", v)
     return
 }
 
@@ -2131,12 +2130,12 @@ func (v *Mp4SampleSizeBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.SampleSize); err != nil {
-        ol.E(nil ,fmt.Sprintf("read stsz sample size failed, err is %v", err))
+        log.Errorf("read stsz sample size failed, err is %v", err)
         return
     }
 
     if err = v.Read(r, &v.SampleCount); err!= nil {
-        ol.E(nil, fmt.Sprintf("read stsz sample count failed, err is %v", err))
+        log.Errorf("read stsz sample count failed, err is %v", err)
         return
     }
 
@@ -2144,14 +2143,14 @@ func (v *Mp4SampleSizeBox) DecodeHeader(r io.Reader) (err error) {
         for i := 0; i < int(v.SampleCount); i++ {
             var size uint32
             if err = v.Read(r, &size); err != nil {
-                ol.E(nil, fmt.Sprintf("read stsz %v entry size failed, err is %v", i, err))
+                log.Errorf("read stsz %v entry size failed, err is %v", i, err)
                 return
             }
             v.EntrySizes = append(v.EntrySizes, size)
         }
     }
 
-    ol.T(nil, fmt.Sprintf("decode stsz box success, box=%+v", v))
+    log.Tracef("decode stsz box success, box=%+v", v)
     return
 }
 
@@ -2188,20 +2187,20 @@ func (v *Mp4ChunkOffsetBox) DecodeHeader(r io.Reader) (err error) {
     }
 
     if err = v.Read(r, &v.EntryCount); err != nil {
-        ol.E(nil, fmt.Sprintf("read stco entry count failed, err is %v", err))
+        log.Errorf("read stco entry count failed, err is %v", err)
         return
     }
 
     for i := 0; i < int(v.EntryCount); i++ {
         var entry uint32
         if err = v.Read(r, &entry); err != nil {
-            ol.E(nil, fmt.Sprintf("read stco %v entry failed, err is %v", i, err))
+            log.Errorf("read stco %v entry failed, err is %v", i, err)
             return
         }
         v.Entries = append(v.Entries, entry)
     }
 
-    ol.T(nil, fmt.Sprintf("decode stco box success, box=%+v", v))
+    log.Tracef("decode stco box success, box=%+v", v)
     return
 }
 
@@ -2231,7 +2230,7 @@ func NewMp4UserDataBox() *Mp4UserDataBox {
 func (v *Mp4UserDataBox) DecodeHeader(r io.Reader) (err error) {
     v.NbData = int(v.left())
     v.Skip(r, v.left())
-    ol.T(nil, fmt.Sprintf("decode udta box success, nb data=%v", v.NbData))
+    log.Tracef("decode udta box success, nb data=%v", v.NbData)
     return
 }
 
@@ -2263,14 +2262,13 @@ func NewMp4MediaDataBox() *Mp4MediaDataBox {
 func (v *Mp4MediaDataBox) DecodeHeader(r io.Reader) (err error) {
     v.NbData = int(v.left())
     v.Skip(r, v.left())
-    ol.T(nil, fmt.Sprintf("decode mdat box success, nb data=%v", v.NbData))
+    log.Tracef("decode mdat box success, nb data=%v", v.NbData)
     return
 }
 
 func (v *Mp4MediaDataBox) Basic() *Mp4Box {
     return &v.Mp4Box
 }
-
 
 
 

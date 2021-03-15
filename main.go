@@ -1,57 +1,74 @@
 package main
 
 import (
-    "fmt"
     "flag"
-    "os"
-    ol "github.com/ossrs/go-oryx-lib/logger"
+    "fmt"
+    log "github.com/sirupsen/logrus"
     "io"
+    "os"
+    "panda.com/mp4parser/core"
+    "path"
+    "runtime"
+    "time"
 )
 
-const (
-    version = "0.0.2"
-
-    SRS_MP4_EOF_SIZE = 0
-    SRS_MP4_USE_LARGE_SIZE = 1
-)
+func Hello()  {
+    
+}
 
 func main()  {
-    fmt.Println(fmt.Sprintf("mp4 parser:%v, by panda of bravovcloud.com", version))
+    log.SetLevel(log.DebugLevel)
+    log.SetReportCaller(true)
+    log.SetFormatter(&log.TextFormatter{
+        FullTimestamp: true,
+        CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
+            fileName := path.Base(frame.File)
+            return fmt.Sprintf("%s()", frame.Function), fmt.Sprintf("%s:%v", fileName, frame.Line)
+        },
+    })
 
-    var mp4Url string
-    flag.StringVar(&mp4Url, "url", "./test.mp4", "mp4 file to be parsed")
+    log.Infof("hi, good girl, welcome to this program, now is:%v", time.Now().Format("2006-01-02 15:04:05.999"))
 
-    ol.T(nil, "the input mp4 url is:", mp4Url)
-
-    var f * os.File
-    var err error
-    if f, err = os.Open(mp4Url); err != nil {
-        ol.T(nil, fmt.Sprint("open file:%v failed, err is %v", mp4Url, err))
+    var inputUrl string
+    flag.StringVar(&inputUrl, "i", "", "use -i to specify input url")
+    flag.Parse()
+    if len(inputUrl) == 0 {
+        flag.PrintDefaults()
+        log.Errorf("input url is empty")
         return
     }
 
+    f, err := os.Open(inputUrl)
+    if err != nil {
+        log.Errorf("open input url:%v failed, err is %v", inputUrl, err)
+        return
+    }
+    defer f.Close()
+
+
+
     for {
-        mb := NewMp4Box()
-        var box Box
-        if box, err = mb.discovery(f); err != nil {
-            ol.E(nil, fmt.Sprintf("discovery box failed, err is %v", err))
+        mb := core.NewMp4Box()
+        var box core.Box
+        if box, err = mb.Discovery(f); err != nil {
+            log.Errorf("discovery box failed, err is %v", err)
             break
         }
-        ol.T(nil, fmt.Sprintf("main discovery box:%+v", box))
+        log.Tracef("main discovery box:%+v", box)
 
         if err = box.DecodeHeader(f); err != nil {
-            ol.E(nil, fmt.Sprintf("mp4 decode contained box header failed, err is %v", err))
+            log.Errorf("mp4 decode contained box header failed, err is %v", err)
             break
         }
-        ol.T(nil, fmt.Sprintf("main after decode header, box:%+v", box))
+        log.Tracef("main after decode header, box:%+v", box)
 
         if err = box.Basic().DecodeBoxes(f); err != nil {
-            ol.E(nil, fmt.Sprintf("mp4 decode contained box boxes failed, err is %v", err))
+            log.Errorf("mp4 decode contained box boxes failed, err is %v", err)
             break
         }
     }
 
     if err == io.EOF {
-        ol.T(nil, fmt.Sprintf("decode mp4 file:%v success", mp4Url))
+        log.Tracef("decode mp4 file:%v success", inputUrl)
     }
 }

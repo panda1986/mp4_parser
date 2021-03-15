@@ -1,6 +1,9 @@
-package main
+package core
 
 const (
+    SRS_MP4_EOF_SIZE = 0
+    SRS_MP4_USE_LARGE_SIZE = 1
+
     SrsMp4BoxTypeForbidden = 0x00
 
     SrsMp4BoxTypeUUID = 0x75756964 // 'uuid'
@@ -177,12 +180,12 @@ const (
  *      1 = 16-bit samples
  */
 const (
-// set to the max value to reserved, for array map.
-SrsAudioSampleBitsReserved = 2
-SrsAudioSampleBitsForbidden = 2
+    // set to the max value to reserved, for array map.
+    SrsAudioSampleBitsReserved = 2
+    SrsAudioSampleBitsForbidden = 2
 
-SrsAudioSampleBits8bit = 0
-SrsAudioSampleBits16bit = 1
+    SrsAudioSampleBits8bit = 0
+    SrsAudioSampleBits16bit = 1
 )
 
 /**
@@ -193,12 +196,12 @@ SrsAudioSampleBits16bit = 1
  *      1 = Stereo sound
  */
 const (
-// set to the max value to reserved, for array map.
-SrsAudioChannelsReserved = 2
-SrsAudioChannelsForbidden = 2
+    // set to the max value to reserved, for array map.
+    SrsAudioChannelsReserved = 2
+    SrsAudioChannelsForbidden = 2
 
-SrsAudioChannelsMono = 0
-SrsAudioChannelsStereo = 1
+    SrsAudioChannelsMono = 0
+    SrsAudioChannelsStereo = 1
 )
 
 /**
@@ -320,4 +323,3 @@ const (
     SrsMp4StreamTypeForbidden = 0x00
     SrsMp4StreamTypeAudioStream = 0x05
 )
-
